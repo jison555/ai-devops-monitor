@@ -25,6 +25,11 @@ public class MonitorController {
     public Map<String, Object> status() {
         return monitorService.getStatus();
     }
+    
+    @GetMapping("/test-status")
+    public Map<String, Object> test() {
+        return monitorService.getStatus();
+    }
 
     @GetMapping("/simulate-error")
     public Map<String, Object> simulateError() {
