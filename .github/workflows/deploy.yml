@@ -46,7 +46,7 @@ jobs:
       # 3. Run tests
       # -----------------------------------
       - name: Run tests
-        run: ./mvnw test
+        run: mvn test
 
       # -----------------------------------
       # 4. Configure AWS using OIDC
