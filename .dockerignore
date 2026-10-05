@@ -1,7 +1,5 @@
-.git
-.idea
-.vscode
-target/*
-!.gitkeep
-.env
-*.log
+.idea/
+*.iml
+.classpath
+.project
+.settings/

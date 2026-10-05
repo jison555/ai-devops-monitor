@@ -4,7 +4,7 @@ WORKDIR /app
 
 RUN useradd --system --uid 10001 appuser
 
-COPY target/ai-devops-monitor-0.0.1-SNAPSHOT.jar app.jar
+COPY target/*.jar app.jar
 
 USER 10001
 

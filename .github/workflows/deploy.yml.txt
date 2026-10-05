@@ -1,0 +1,116 @@
+name: Deploy AI DevOps Monitor
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: jj-companies/ai-devops-monitor
+  ECS_SERVICE: ai-devops-monitor-task-service-zw6jz2s4
+  ECS_CLUSTER: ai-devops-monitor-cluster
+  ECS_TASK_DEFINITION: .aws/task-definition.json
+  CONTAINER_NAME: ai-devops-monitor
+
+jobs:
+
+  deploy:
+
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # -----------------------------------
+      # 1. Checkout source code
+      # -----------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -----------------------------------
+      # 2. Setup Java
+      # -----------------------------------
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # -----------------------------------
+      # 3. Run tests
+      # -----------------------------------
+      - name: Run tests
+        run: ./mvnw test
+
+      # -----------------------------------
+      # 4. Configure AWS using OIDC
+      # -----------------------------------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: 227242799640
+
+      # -----------------------------------
+      # 5. Login to ECR
+      # -----------------------------------
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # -----------------------------------
+      # 6. Build Docker image
+      # -----------------------------------
+      - name: Build Docker image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            .
+
+      # -----------------------------------
+      # 7. Push image to ECR
+      # -----------------------------------
+      - name: Push Docker image
+        id: push-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker push \
+            $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      # -----------------------------------
+      # 8. Update ECS task definition
+      # -----------------------------------
+      - name: Render ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.push-image.outputs.image }}
+
+      # -----------------------------------
+      # 9. Deploy to ECS
+      # -----------------------------------
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          enable-ecs-managed-tags: true
