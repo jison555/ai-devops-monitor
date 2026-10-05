@@ -5,6 +5,8 @@ on:
     branches:
       - main
 
+  workflow_dispatch:
+
 permissions:
   id-token: write
   contents: read
@@ -33,7 +35,7 @@ jobs:
         uses: actions/checkout@v4
 
       # -----------------------------------
-      # 2. Setup Java
+      # 2. Setup Java 17
       # -----------------------------------
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -47,13 +49,41 @@ jobs:
       # -----------------------------------
       - name: Run tests
         run: mvn test
-      
-      - name: Debug GitHub OIDC
-        uses: github/actions-oidc-debugger@main
-        continue-on-error: true      
 
       # -----------------------------------
-      # 4. Configure AWS using OIDC
+      # 4. Debug GitHub OIDC claims
+      #    TEMPORARY - remove after fixing IAM
+      # -----------------------------------
+      - name: Inspect GitHub OIDC claims
+        shell: bash
+        run: |
+          TOKEN=$(curl -sSf \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" \
+            | jq -r '.value')
+
+          PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f2)
+
+          node - "$PAYLOAD" <<'NODE'
+          const payload = process.argv[2];
+
+          const decoded = JSON.parse(
+            Buffer.from(payload, 'base64url').toString('utf8')
+          );
+
+          console.log("GitHub OIDC claims:");
+          console.log(JSON.stringify({
+            iss: decoded.iss,
+            aud: decoded.aud,
+            sub: decoded.sub,
+            repository: decoded.repository,
+            ref: decoded.ref,
+            event_name: decoded.event_name
+          }, null, 2));
+          NODE
+
+      # -----------------------------------
+      # 5. Configure AWS using OIDC
       # -----------------------------------
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -63,14 +93,14 @@ jobs:
           allowed-account-ids: 227242799640
 
       # -----------------------------------
-      # 5. Login to ECR
+      # 6. Login to ECR
       # -----------------------------------
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       # -----------------------------------
-      # 6. Build Docker image
+      # 7. Build Docker image
       # -----------------------------------
       - name: Build Docker image
         id: build-image
@@ -83,7 +113,7 @@ jobs:
             .
 
       # -----------------------------------
-      # 7. Push image to ECR
+      # 8. Push image to ECR
       # -----------------------------------
       - name: Push Docker image
         id: push-image
@@ -94,10 +124,10 @@ jobs:
           docker push \
             $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
       # -----------------------------------
-      # 8. Update ECS task definition
+      # 9. Update ECS task definition
       # -----------------------------------
       - name: Render ECS task definition
         id: task-def
@@ -108,7 +138,7 @@ jobs:
           image: ${{ steps.push-image.outputs.image }}
 
       # -----------------------------------
-      # 9. Deploy to ECS
+      # 10. Deploy to ECS
       # -----------------------------------
       - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
