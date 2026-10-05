@@ -47,6 +47,10 @@ jobs:
       # -----------------------------------
       - name: Run tests
         run: mvn test
+      
+      - name: Debug GitHub OIDC
+        uses: github/actions-oidc-debugger@main
+        continue-on-error: true      
 
       # -----------------------------------
       # 4. Configure AWS using OIDC
