@@ -47,8 +47,8 @@ jobs:
       # -----------------------------------
       # 3. Run tests
       # -----------------------------------
-      - name: Run tests
-        run: mvn test
+      - name: Build application
+        run: mvn clean package
 
       # -----------------------------------
       # 4. Debug GitHub OIDC claims
